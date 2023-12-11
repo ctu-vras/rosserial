@@ -49,7 +49,7 @@ namespace rosserial_server
 
 class Publisher {
 public:
-  Publisher(ros::NodeHandle& nh, const rosserial_msgs::TopicInfo& topic_info) {
+  Publisher(ros::NodeHandle& nh, const rosserial_msgs::TopicInfo& topic_info, bool latch) {
     rosserial_server::MsgInfo msginfo;
     try
     {
@@ -66,8 +66,11 @@ public:
                       "match that in system. Will avoid using system's message definition.");
       msginfo.full_text = "";
     }
-    message_.morph(topic_info.md5sum, topic_info.message_type, msginfo.full_text, "false");
+    message_.morph(topic_info.md5sum, topic_info.message_type, msginfo.full_text, latch ? "1" : "0");
     publisher_ = message_.advertise(nh, topic_info.topic_name, 1);
+  }
+
+  Publisher(ros::NodeHandle& nh, const rosserial_msgs::TopicInfo& topic_info) : Publisher(nh, topic_info, false) {
   }
 
   void handle(ros::serialization::IStream stream) {

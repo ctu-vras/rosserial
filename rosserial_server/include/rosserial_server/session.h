@@ -37,6 +37,7 @@
 
 #include <map>
 #include <stdexcept>
+#include <boost/algorithm/string.hpp>
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
 #include <boost/function.hpp>
@@ -417,8 +418,15 @@ private:
   void setup_publisher(ros::serialization::IStream& stream) {
     rosserial_msgs::TopicInfo topic_info;
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
+    bool latch {false};
+    const std::string latchSuffix = "__latch__";
+    if (boost::ends_with(topic_info.topic_name, latchSuffix))
+    {
+      boost::replace_last(topic_info.topic_name, latchSuffix, "");
+      latch = true;
+    }
 
-    PublisherPtr pub(new Publisher(nh_, topic_info));
+    PublisherPtr pub(new Publisher(nh_, topic_info, latch));
     callbacks_[topic_info.topic_id] = boost::bind(&Publisher::handle, pub, _1);
     publishers_[topic_info.topic_id] = pub;
 
