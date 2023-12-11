@@ -67,7 +67,7 @@ public:
       msginfo.full_text = "";
     }
     message_.morph(topic_info.md5sum, topic_info.message_type, msginfo.full_text, latch ? "1" : "0");
-    publisher_ = message_.advertise(nh, topic_info.topic_name, 1);
+    publisher_ = message_.advertise(nh, topic_info.topic_name, 1, latch);
   }
 
   Publisher(ros::NodeHandle& nh, const rosserial_msgs::TopicInfo& topic_info) : Publisher(nh, topic_info, false) {
