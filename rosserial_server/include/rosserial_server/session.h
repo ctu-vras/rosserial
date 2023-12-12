@@ -84,6 +84,9 @@ public:
     require_param_name_ = "~require";
 
     unrecognised_topic_retry_threshold_ = ros::param::param("~unrecognised_topic_retry_threshold", 0);
+
+    static int session_id_next {0};
+    session_id_ = session_id_next++;
   }
 
   Socket& socket()
@@ -93,7 +96,7 @@ public:
 
   void start()
   {
-    ROS_DEBUG("Starting session.");
+    ROS_INFO("[%i] Starting session.", session_id_);
 
     callbacks_[rosserial_msgs::TopicInfo::ID_PUBLISHER]
         = boost::bind(&Session::setup_publisher, this, _1);
@@ -148,6 +151,7 @@ public:
 
     // Close the socket.
     socket_.close();
+    ROS_WARN("[%i] TCP socket closed.", session_id_);
     active_ = false;
   }
 
@@ -234,9 +238,9 @@ private:
   }
 
   void read_body(ros::serialization::IStream& stream, uint16_t topic_id) {
-    ROS_DEBUG("Received body of length %d for message on topic %d.", stream.getLength(), topic_id);
     if (!active_)
       return;
+    ROS_DEBUG("[%i] Received body of length %d for message on topic %d.", session_id_, stream.getLength(), topic_id);
 
     ros::serialization::IStream checksum_stream(stream.getData(), stream.getLength());
     uint8_t msg_checksum = checksum(checksum_stream) + checksum(topic_id);
@@ -258,13 +262,13 @@ private:
           }
         }
       } else {
-        ROS_WARN("Received message with unrecognized topicId (%d).", topic_id);
+        ROS_WARN("[%i] Received message with unrecognized topicId (%d).", session_id_, topic_id);
 
         if ((unrecognised_topic_retry_threshold_ > 0) && ++unrecognised_topics_ >= unrecognised_topic_retry_threshold_)
         {
           // The threshold for unrecognised topics has been exceeded.
           // Attempt to request the topics from the client again
-          ROS_WARN("Unrecognised topic threshold exceeded. Requesting topics from client");
+          ROS_WARN("[%i] Unrecognised topic threshold exceeded. Requesting topics from client", session_id_);
           attempt_sync();
           unrecognised_topics_ = 0;
         }
@@ -278,12 +282,15 @@ private:
   void read_failed(const boost::system::error_code& error) {
     if (error == boost::system::errc::no_buffer_space) {
       // No worries. Begin syncing on a new message.
-      ROS_WARN("Overrun on receive buffer. Attempting to regain rx sync.");
+      ROS_WARN("[%i] Overrun on receive buffer. Attempting to regain rx sync.", session_id_);
       read_sync_header();
+    } else if (error == boost::system::errc::connection_reset || error == boost::system::errc::connection_aborted) {
+      ROS_WARN_STREAM("[" << session_id_ <<"] Connection reset, closing socket: " << error);
+      stop();
     } else if (error) {
       // When some other read error has occurred, stop the session, which destroys
       // all known publishers and subscribers.
-      ROS_WARN_STREAM("Socket asio error, closing socket: " << error);
+      ROS_WARN_STREAM("[" << session_id_ <<"] Socket read error, closing socket: " << error);
       stop();
     }
   }
@@ -330,11 +337,11 @@ private:
                            BufferPtr buffer_ptr) {
     if (error && active_) {
       if (error == boost::system::errc::io_error) {
-        ROS_WARN_THROTTLE(1, "Socket write operation returned IO error.");
+        ROS_WARN_THROTTLE(1, "[%i] Socket write operation returned IO error.", session_id_);
       } else if (error == boost::system::errc::no_such_device) {
-        ROS_WARN_THROTTLE(1, "Socket write operation returned no device.");
+        ROS_WARN_THROTTLE(1, "[%i] Socket write operation returned no device.", session_id_);
       } else {
-        ROS_WARN_STREAM_THROTTLE(1, "Unknown error returned during write operation: " << error);
+        ROS_WARN_STREAM_THROTTLE(1, "[" << session_id_ << "] Unknown error returned during write operation: " << error);
       }
       stop();
     }
@@ -363,7 +370,7 @@ private:
 
   void sync_timeout(const boost::system::error_code& error) {
     if (error != boost::asio::error::operation_aborted) {
-      ROS_WARN("Sync with device lost.");
+      ROS_WARN("[%i] Sync with device lost.", session_id_);
       stop();
     }
   }
@@ -723,6 +730,7 @@ private:
   ros::AsyncSpinner sub_spinner_; // For sub topics
   ros::AsyncSpinner srv_spinner_; // For service server
   ros::CallbackQueue ros_srv_callback_queue_;
+  int session_id_;
 
   boost::posix_time::time_duration timeout_interval_;
   boost::posix_time::time_duration attempt_interval_;
