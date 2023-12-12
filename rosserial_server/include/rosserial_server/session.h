@@ -181,10 +181,14 @@ private:
   // TODO: Total message timeout, implement primarily in ReadBuffer.
 
   void read_sync_header() {
+    if (!active_)
+      return;
     async_read_buffer_.read(1, boost::bind(&Session::read_sync_first, this, _1));
   }
 
   void read_sync_first(ros::serialization::IStream& stream) {
+    if (!active_)
+      return;
     uint8_t sync;
     stream >> sync;
     if (sync == 0xff) {
@@ -195,6 +199,8 @@ private:
   }
 
   void read_sync_second(ros::serialization::IStream& stream) {
+    if (!active_)
+      return;
     uint8_t sync;
     stream >> sync;
     if (sync == 0xfe) {
@@ -205,6 +211,8 @@ private:
   }
 
   void read_id_length(ros::serialization::IStream& stream) {
+    if (!active_)
+      return;
     uint16_t topic_id, length;
     uint8_t length_checksum;
 
@@ -227,6 +235,8 @@ private:
 
   void read_body(ros::serialization::IStream& stream, uint16_t topic_id) {
     ROS_DEBUG("Received body of length %d for message on topic %d.", stream.getLength(), topic_id);
+    if (!active_)
+      return;
 
     ros::serialization::IStream checksum_stream(stream.getData(), stream.getLength());
     uint8_t msg_checksum = checksum(checksum_stream) + checksum(topic_id);
@@ -281,6 +291,8 @@ private:
   //// SENDING MESSAGES ////
 
   void write_message(Buffer& message, const uint16_t topic_id) {
+    if (!active_)
+      return;
     uint8_t overhead_bytes = 8;
     uint16_t length = overhead_bytes + message.size();
     BufferPtr buffer_ptr(new Buffer(length));
@@ -308,13 +320,15 @@ private:
   }
 
   void write_buffer(BufferPtr buffer_ptr) {
+    if (!active_)
+      return;
     boost::asio::async_write(socket_, boost::asio::buffer(*buffer_ptr),
           boost::bind(&Session::write_completion_cb, this, boost::asio::placeholders::error, buffer_ptr));
   }
 
   void write_completion_cb(const boost::system::error_code& error,
                            BufferPtr buffer_ptr) {
-    if (error) {
+    if (error && active_) {
       if (error == boost::system::errc::io_error) {
         ROS_WARN_THROTTLE(1, "Socket write operation returned IO error.");
       } else if (error == boost::system::errc::no_such_device) {
@@ -430,9 +444,13 @@ private:
       latch = true;
     }
 
-    PublisherPtr pub(new Publisher(nh_, topic_info, latch));
-    callbacks_[topic_info.topic_id] = boost::bind(&Publisher::handle, pub, _1);
-    publishers_[topic_info.topic_id] = pub;
+    if (!publishers_.count(topic_info.topic_id))
+    {
+      PublisherPtr pub(new Publisher(nh_, topic_info, latch));
+      publishers_[topic_info.topic_id] = pub;
+    }
+    if (!callbacks_.count(topic_info.topic_id))
+      callbacks_[topic_info.topic_id] = boost::bind(&Publisher::handle, publishers_[topic_info.topic_id], _1);
 
     set_sync_timeout(timeout_interval_);
 
@@ -443,9 +461,12 @@ private:
     rosserial_msgs::TopicInfo topic_info;
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
 
-    SubscriberPtr sub(new Subscriber(nh_, topic_info,
-        boost::bind(&Session::write_message, this, _1, topic_info.topic_id)));
-    subscribers_[topic_info.topic_id] = sub;
+    if (!subscribers_.count(topic_info.topic_id))
+    {
+      SubscriberPtr sub(new Subscriber(nh_, topic_info,
+          boost::bind(&Session::write_message, this, _1, topic_info.topic_id)));
+      subscribers_[topic_info.topic_id] = sub;
+    }
 
     set_sync_timeout(timeout_interval_);
 
@@ -506,6 +527,9 @@ private:
     rosserial_msgs::TopicInfo topic_info;
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
 
+    // Shutdown service server from previous session if it is registered.
+    if (service_servers_.count(topic_info.topic_name))
+      service_servers_[topic_info.topic_name]->shutdown();
     if (!service_servers_.count(topic_info.topic_name)) {
       ROS_INFO("Creating service server for topic %s",topic_info.topic_name.c_str());
       ServiceServerPtr srv(new ServiceServer(nh_, ros_srv_callback_queue_, topic_info, buffer_max, boost::bind(&Session::write_message, this, _1, _2)));
@@ -525,6 +549,9 @@ private:
     rosserial_msgs::TopicInfo topic_info;
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
 
+    // Shutdown service server from previous session if it is registered.
+    if (service_servers_.count(topic_info.topic_name))
+      service_servers_[topic_info.topic_name]->shutdown();
     if (!service_servers_.count(topic_info.topic_name)) {
       ROS_INFO("Creating service server for topic %s",topic_info.topic_name.c_str());
       ServiceServerPtr srv(new ServiceServer(nh_, ros_srv_callback_queue_, topic_info, buffer_max, boost::bind(&Session::write_message, this, _1, _2)));
@@ -710,8 +737,16 @@ private:
   std::map<uint16_t, PublisherPtr> publishers_;
   std::map<uint16_t, SubscriberPtr> subscribers_;
   std::map<std::string, ServiceClientPtr> service_clients_;
-  std::map<std::string, ServiceServerPtr> service_servers_;
+  // We only need to have a single service server globally for each service. When the MCU dies,
+  // it quickly creates a new Session without the previous one being destroyed (it will get
+  // destroyed later when sync times out). So we can have concurrently multiple Sessions for a
+  // single MCU. Setting the list of service servers static makes it possible to detect this and
+  // shut down the previous server gracefully.
+  static std::map<std::string, ServiceServerPtr> service_servers_;
 };
+
+template<typename Socket>
+std::map<std::string, ServiceServerPtr> Session<Socket>::service_servers_;
 
 }  // namespace
 

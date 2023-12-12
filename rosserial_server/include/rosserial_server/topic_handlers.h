@@ -285,6 +285,10 @@ public:
     cv_.notify_one();
   }
 
+  void shutdown() {
+    service_server_.shutdown();
+  }
+
 private:
   std::vector<uint8_t> response_buffer_;
   size_t buffer_len_;
