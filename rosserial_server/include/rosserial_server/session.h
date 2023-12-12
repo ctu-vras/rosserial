@@ -639,7 +639,7 @@ private:
     }
     catch (const std::exception& e)
     {
-      ROS_ERROR("Could not fetch parameter: %s", e.what());
+      ROS_ERROR("Could not fetch parameter [%s]: %s", req_param.request.name.c_str(), e.what());
       req_param.response.ints.clear();
       req_param.response.floats.clear();
       req_param.response.strings.clear();
