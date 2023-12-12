@@ -49,7 +49,9 @@
 #include <rosserial_msgs/Log.h>
 #include <rosserial_msgs/RequestParam.h>
 #include <topic_tools/shape_shifter.h>
+#include <std_msgs/String.h>
 #include <std_msgs/Time.h>
+#include <XmlRpcValue.h>
 
 #include "rosserial_server/async_read_buffer.h"
 #include "rosserial_server/topic_handlers.h"
@@ -107,6 +109,8 @@ public:
         = boost::bind(&Session::setup_service_client_subscriber, this, _1);
     callbacks_[rosserial_msgs::TopicInfo::ID_PARAMETER_REQUEST]
         = boost::bind(&Session::handle_parameter_request, this, _1);
+    callbacks_[66u]  // ID_PARAMETER_SET_REQUEST
+        = boost::bind(&Session::handle_parameter_set_request, this, _1);
     callbacks_[rosserial_msgs::TopicInfo::ID_LOG]
         = boost::bind(&Session::handle_log, this, _1);
     callbacks_[rosserial_msgs::TopicInfo::ID_TIME]
@@ -613,6 +617,46 @@ private:
     ros::serialization::OStream ostream(&buffer[0], length);
     ros::serialization::Serializer<rosserial_msgs::RequestParamResponse>::write(ostream, req_param.response);
     write_message(buffer, rosserial_msgs::TopicInfo::ID_PARAMETER_REQUEST);
+  }
+
+  void handle_parameter_set_request(ros::serialization::IStream& stream) {
+    std_msgs::String reqXml;  // We send the requested parameter encoded as a XmlRpc struct with keys name, value.
+    ros::serialization::Serializer<std_msgs::String>::read(stream, reqXml);
+    XmlRpc::XmlRpcValue req;
+    int offset {0};
+    req.fromXml(reqXml.data, &offset);
+
+    if (req.getType() != XmlRpc::XmlRpcValue::TypeStruct && req.getType() != XmlRpc::XmlRpcValue::TypeArray)
+    {
+      ROS_ERROR("Invalid PARAMETER_SET_REQUEST. "
+                "It needs to be an XmlRpc struct or array of structs, but type %i given.", req.getType());
+      return;
+    }
+
+    if (req.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+    {
+      const XmlRpc::XmlRpcValue req2 = req;
+      req.clear();
+      req[0] = req2;
+    }
+
+    for (size_t i = 0; i < req.size(); ++i)
+    {
+      const auto& paramStruct = req[i];
+      if (!paramStruct.hasMember("name") || paramStruct["name"].getType() != XmlRpc::XmlRpcValue::TypeString)
+      {
+        ROS_ERROR("Invalid PARAMETER_SET_REQUEST[%zu]. It has to contain a string key 'name'.", i);
+        continue;
+      }
+      if (!paramStruct.hasMember("value"))
+      {
+        ROS_ERROR("Invalid PARAMETER_SET_REQUEST[%zu]. It has to contain key 'value'.", i);
+        continue;
+      }
+      const std::string paramName = paramStruct["name"];
+      nh_.setParam(paramName, paramStruct["value"]);
+      ROS_DEBUG_STREAM("Set parameter " << paramName << " to value " << paramStruct["value"]);
+    }
   }
 
   void handle_log(ros::serialization::IStream& stream) {
