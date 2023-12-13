@@ -37,6 +37,7 @@
 
 #include <map>
 #include <stdexcept>
+#include <utility>
 #include <boost/algorithm/string.hpp>
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
@@ -535,15 +536,18 @@ private:
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
 
     // Shutdown service server from previous session if it is registered.
-    if (service_servers_.count(topic_info.topic_name))
-      service_servers_[topic_info.topic_name]->shutdown();
+    if (service_servers_.count(topic_info.topic_name) && service_servers_[topic_info.topic_name].first != this)
+    {
+      service_servers_[topic_info.topic_name].second->shutdown();
+      service_servers_.erase(topic_info.topic_name);
+    }
     if (!service_servers_.count(topic_info.topic_name)) {
       ROS_INFO("Creating service server for topic %s",topic_info.topic_name.c_str());
       ServiceServerPtr srv(new ServiceServer(nh_, ros_srv_callback_queue_, topic_info, buffer_max, boost::bind(&Session::write_message, this, _1, _2)));
-      service_servers_[topic_info.topic_name] = srv;
+      service_servers_[topic_info.topic_name] = std::make_pair(this, srv);
       callbacks_[topic_info.topic_id] = boost::bind(&ServiceServer::response_handle, srv, _1);
     }
-    if (service_servers_[topic_info.topic_name]->getResponseMessageMD5() != topic_info.md5sum) {
+    if (service_servers_[topic_info.topic_name].second->getResponseMessageMD5() != topic_info.md5sum) {
       ROS_WARN("Service server setup: Request message MD5 mismatch between rosserial server and ROS");
     } else {
       ROS_DEBUG("Service server %s: request message MD5 successfully validated as %s",
@@ -557,17 +561,20 @@ private:
     ros::serialization::Serializer<rosserial_msgs::TopicInfo>::read(stream, topic_info);
 
     // Shutdown service server from previous session if it is registered.
-    if (service_servers_.count(topic_info.topic_name))
-      service_servers_[topic_info.topic_name]->shutdown();
+    if (service_servers_.count(topic_info.topic_name) && service_servers_[topic_info.topic_name].first != this)
+    {
+      service_servers_[topic_info.topic_name].second->shutdown();
+      service_servers_.erase(topic_info.topic_name);
+    }
     if (!service_servers_.count(topic_info.topic_name)) {
       ROS_INFO("Creating service server for topic %s",topic_info.topic_name.c_str());
       ServiceServerPtr srv(new ServiceServer(nh_, ros_srv_callback_queue_, topic_info, buffer_max, boost::bind(&Session::write_message, this, _1, _2)));
-      service_servers_[topic_info.topic_name] = srv;
+      service_servers_[topic_info.topic_name] = std::make_pair(this, srv);
       callbacks_[topic_info.topic_id] = boost::bind(&ServiceServer::response_handle, srv, _1);
     }
     // see above comment regarding the service server callback for why we set topic_id here
-    service_servers_[topic_info.topic_name]->setTopicId(topic_info.topic_id);
-    if (service_servers_[topic_info.topic_name]->getRequestMessageMD5() != topic_info.md5sum) {
+    service_servers_[topic_info.topic_name].second->setTopicId(topic_info.topic_id);
+    if (service_servers_[topic_info.topic_name].second->getRequestMessageMD5() != topic_info.md5sum) {
       ROS_WARN("Service server setup: Response message MD5 mismatch between rosserial server and ROS");
     } else {
       ROS_DEBUG("Service server %s: response message MD5 successfully validated as %s",
@@ -749,12 +756,13 @@ private:
   // it quickly creates a new Session without the previous one being destroyed (it will get
   // destroyed later when sync times out). So we can have concurrently multiple Sessions for a
   // single MCU. Setting the list of service servers static makes it possible to detect this and
-  // shut down the previous server gracefully.
-  static std::map<std::string, ServiceServerPtr> service_servers_;
+  // shut down the previous server gracefully. We also store a pointer to the Session object to
+  // which the server belongs to be able to distinguish if it needs to be recreated or not.
+  static std::map<std::string, std::pair<Session*, ServiceServerPtr>> service_servers_;
 };
 
 template<typename Socket>
-std::map<std::string, ServiceServerPtr> Session<Socket>::service_servers_;
+std::map<std::string, std::pair<Session<Socket>*, ServiceServerPtr>> Session<Socket>::service_servers_;
 
 }  // namespace
 
