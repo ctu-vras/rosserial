@@ -45,6 +45,7 @@ import roslib.message
 import traceback
 
 import inspect, os, sys, re
+from contextlib import redirect_stdout
 from importlib.machinery import SourceFileLoader
 from importlib.util import spec_from_loader, module_from_spec
 from string import Template
@@ -570,7 +571,8 @@ class DynamicReconfigure:
 
         try:
             cfg_module = module_from_spec(self.spec)
-            self.spec.loader.exec_module(cfg_module)
+            with redirect_stdout(None):
+                self.spec.loader.exec_module(cfg_module)
         except SystemExit:
             pass
         except Exception as e:
