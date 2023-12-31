@@ -37,6 +37,7 @@ from __future__ import print_function
 
 __author__ = "mferguson@willowgarage.com (Michael Ferguson)"
 
+from catkin.find_in_workspaces import find_in_workspaces
 from dynamic_reconfigure.parameter_generator_catkin import ParameterGenerator, check_description
 import roslib
 import roslib.srvs
@@ -579,13 +580,27 @@ class DynamicReconfigure:
 #####################################################################
 # Make a Library
 
-def MakeLibrary(package, output_path, rospack):
-    pkg_dir = rospack.get_path(package)
+catkin_cache_1 = {}
+catkin_cache_2 = {}
 
+
+def MakeLibrary(package, output_path):
+    global catkin_cache_1
+    global catkin_cache_2
+    # Action files have their .action in the source space, but the individual generated .msg files in devel space.
+    # Rospack would only find the source space, so we need to use catkin.find_in_workspaces to get both the source
+    # and devel space paths.
+    pkg_dirs = find_in_workspaces(("share",), package, first_matching_workspace_only=True,
+                                  workspace_to_source_spaces=catkin_cache_1, source_path_to_packages=catkin_cache_2)
+    for pkg_dir in pkg_dirs:
+        MakePkgDir(package, output_path, pkg_dir)
+
+
+def MakePkgDir(package, output_path, pkg_dir):
     # find the messages in this package
     messages = list()
     if os.path.exists(os.path.join(pkg_dir, "msg")):
-        print('Exporting %s\n'%package)
+        print('Exporting %s (%s)\n' % (package, pkg_dir))
         sys.stdout.write('  Messages:')
         sys.stdout.write('\n    ')
         for f in os.listdir(os.path.join(pkg_dir, "msg")):
@@ -605,7 +620,7 @@ def MakeLibrary(package, output_path, rospack):
     # find the services in this package
     if os.path.exists(os.path.join(pkg_dir, "srv")):
         if messages == list():
-            print('Exporting %s\n'%package)
+            print('Exporting %s (%s)\n' % (package, pkg_dir))
         else:
             print('\n')
         sys.stdout.write('  Services:')
@@ -632,7 +647,7 @@ def MakeLibrary(package, output_path, rospack):
     # find dynamic reconfigure configs in this package
     if os.path.exists(os.path.join(pkg_dir, "cfg")):
         if messages == list():
-            print('Exporting %s\n'%package)
+            print('Exporting %s (%s)\n' % (package, pkg_dir))
         else:
             print('\n')
         sys.stdout.write('  Dynamic reconfigure:')
@@ -671,7 +686,7 @@ def rosserial_generate(rospack, path, mapping):
     failed = []
     for p in sorted(rospack.list()):
         try:
-            MakeLibrary(p, path, rospack)
+            MakeLibrary(p, path)
         except Exception as e:
             failed.append(p + " ("+str(e)+")")
             print('[%s]: Unable to build messages: %s\n' % (p, str(e)))
