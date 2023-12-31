@@ -37,12 +37,16 @@ from __future__ import print_function
 
 __author__ = "mferguson@willowgarage.com (Michael Ferguson)"
 
+from dynamic_reconfigure.parameter_generator_catkin import ParameterGenerator, check_description
 import roslib
 import roslib.srvs
 import roslib.message
 import traceback
 
-import os, sys, re
+import inspect, os, sys, re
+from importlib.machinery import SourceFileLoader
+from importlib.util import spec_from_loader, module_from_spec
+from string import Template
 
 # for copying files
 import shutil
@@ -55,6 +59,57 @@ def type_to_var(ty):
         8 : 'uint64_t',
     }
     return lookup[ty]
+
+
+def nothing(*argv, **args):
+    pass
+
+
+def appendgroup(self, list, group):
+    subgroups = []
+    for g in group.groups:
+        self.appendgroup(subgroups, g)
+    setters = []
+    params = []
+    for p in group.parameters:
+        setters.append(Template("        if(strcmp(\"${name}\", (*_i)->name) == 0){${name} = std::any_cast<${ctype}>(val);}").substitute(p))
+        params.append(Template("${ctype} ${name};").substitute(p))
+
+    subgroups = "\n".join(subgroups)
+    setters = "\n".join(setters)
+    params = "\n".join(params)
+    grouptemplate = open(os.path.join(self.dynconfpath, "templates", "GroupClass.h.template")).read()
+    list.append(Template(grouptemplate).safe_substitute(group.to_dict(), subgroups=subgroups, setters=setters, params=params, configname=self.name))
+
+
+def fill_type(self, param):
+    param['ctype'] = {'str': 'const char *', 'int': 'int', 'double': 'double', 'bool': 'bool'}[param['type']]
+    param['cconsttype'] = {'str': 'const char * const', 'int': 'const int', 'double': 'const double', 'bool': 'const bool'}[param['type']]
+
+
+def const(self, name, type, value, descr):
+    newconst = {
+        'name': name,
+        'type': type,
+        'value': value,
+        'srcline': inspect.currentframe().f_back.f_lineno,
+        'srcfile': '',  # do not add srcfile to save bandwidth
+        'description': descr
+    }
+    check_description(descr)
+    self.fill_type(newconst)
+    self.check_type(newconst, 'value')
+    self.constants.append(newconst)
+    return newconst  # So that we can assign the value easily.
+
+
+ParameterGenerator.generatepy = nothing
+ParameterGenerator.generatedoc = nothing
+ParameterGenerator.generateusage = nothing
+ParameterGenerator.generatewikidoc = nothing
+ParameterGenerator.appendgroup = appendgroup
+ParameterGenerator.fill_type = fill_type
+ParameterGenerator.const = const
 
 #####################################################################
 # Data Types
@@ -487,6 +542,40 @@ class Service:
         f.write('#endif\n')
 
 
+class DynamicReconfigure:
+    def __init__(self, name, package, spec):
+        """
+        @param name -  name of service
+        @param package - name of service package
+        @param spec - spec of the module file
+        """
+
+        self.name = name + "Config"
+        self.package = package
+        self.spec = spec
+
+    def make_header(self, f):
+        cpp_gen_path = os.path.dirname(f.name)
+        f.close()
+
+        d = os.path.dirname
+        sys.argv = [
+            "",
+            d(d(d(__file__))),  # dynconfpath
+            "",  # binary_dir
+            cpp_gen_path,  # cpp_gen_dir
+            "",  # py_gen_dir
+        ]
+
+        try:
+            cfg_module = module_from_spec(self.spec)
+            self.spec.loader.exec_module(cfg_module)
+        except SystemExit:
+            pass
+        except Exception as e:
+            print("Error generating dynamic reconfigure %s/%s: %s", self.package, self.name, e, file=sys.stderr)
+
+
 #####################################################################
 # Make a Library
 
@@ -535,6 +624,30 @@ def MakeLibrary(package, output_path, rospack):
                     messages.append( Service(f[0:-4], package, definition, md5req, md5res ) )
                 else:
                     err_msg = "Unable to build service: %s/%s\n" % (package, f[0:-4])
+                    sys.stderr.write(err_msg)
+        print('\n')
+    elif messages != list():
+        print('\n')
+
+    # find dynamic reconfigure configs in this package
+    if os.path.exists(os.path.join(pkg_dir, "cfg")):
+        if messages == list():
+            print('Exporting %s\n'%package)
+        else:
+            print('\n')
+        sys.stdout.write('  Dynamic reconfigure:')
+        sys.stdout.write('\n    ')
+        for f in os.listdir(os.path.join(pkg_dir, "cfg")):
+            if f.endswith(".cfg"):
+                cfg_file = os.path.join(pkg_dir, "cfg", f)
+                # add to list of messages
+                print('%s,'%f[0:-4], end='')
+
+                try:
+                    spec = spec_from_loader("cfg", SourceFileLoader("cfg", cfg_file))
+                    messages.append( DynamicReconfigure(f[0:-4], package, spec ) )
+                except:
+                    err_msg = "Unable to build dynamic reconfigure: %s/%s\n" % (package, f[0:-4])
                     sys.stderr.write(err_msg)
         print('\n')
     elif messages != list():
@@ -591,4 +704,3 @@ def rosserial_client_copy_files(rospack, path):
     mydir = rospack.get_path("rosserial_client")
     for f in files:
         shutil.copyfile(os.path.join(mydir, "src", "ros_lib", f), os.path.join(path, f))
-
