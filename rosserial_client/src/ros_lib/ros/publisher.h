@@ -35,6 +35,10 @@
 #ifndef _ROS_PUBLISHER_H_
 #define _ROS_PUBLISHER_H_
 
+#include <cstdio>
+
+#include <string>
+
 #include "rosserial_msgs/TopicInfo.h"
 #include "ros/node_handle.h"
 
@@ -46,24 +50,51 @@ class Publisher
 {
 public:
   Publisher(const char * topic_name, Msg * msg, int endpoint = rosserial_msgs::TopicInfo::ID_PUBLISHER) :
+    Publisher(topic_name, msg, false, endpoint)
+  {
+  }
+
+  Publisher(const char * topic_name, Msg * msg, bool latch, int endpoint = rosserial_msgs::TopicInfo::ID_PUBLISHER) :
     topic_(topic_name),
     msg_(msg),
-    endpoint_(endpoint) {};
+    latch_(latch),
+    endpoint_(endpoint)
+  {
+    if (latch)
+    {
+      topic_str_ = std::string(topic_name) + "__latch__";
+      topic_ = topic_str_.c_str();
+    }
+  }
 
   int publish(const Msg * msg)
   {
+    if (latch_)
+      latched_msg_ = msg;
     return nh_->publish(id_, msg);
-  };
+  }
+  int publishLatched()
+  {
+    if (latch_ && latched_msg_ != nullptr)
+    {
+      printf("Resending latched message on %i: %s\r\n", id_, topic_);
+      return nh_->publish(id_, latched_msg_);
+    }
+    return 0;
+  }
   int getEndpointType()
   {
     return endpoint_;
   }
 
+  std::string topic_str_ {};
   const char * topic_;
   Msg *msg_;
-  // id_ and no_ are set by NodeHandle when we advertise
+  const Msg *latched_msg_ {nullptr};
+  // id_ and nh_ are set by NodeHandle when we advertise
   int id_;
   NodeHandleBase_* nh_;
+  bool latch_;
 
 private:
   int endpoint_;

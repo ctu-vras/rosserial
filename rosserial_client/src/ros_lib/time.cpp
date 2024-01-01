@@ -33,9 +33,15 @@
  */
 
 #include "ros/time.h"
+#include "ros/node_handle.h"
+
+#include <tuple>
 
 namespace ros
 {
+
+NodeHandleBase_* Time::nh;
+
 void normalizeSecNSec(uint32_t& sec, uint32_t& nsec)
 {
   uint32_t nsec_part = nsec % 1000000000UL;
@@ -60,6 +66,13 @@ Time& Time::operator +=(const Duration &rhs)
   return *this;
 }
 
+Time Time::operator+(const Duration &rhs)
+{
+  ros::Time t(*this);
+  t += rhs;
+  return t;
+}
+
 Time& Time::operator -=(const Duration &rhs){
   sec = sec - 1 - rhs.sec;
   nsec = nsec + 1000000000UL - rhs.nsec;
@@ -76,4 +89,36 @@ Duration Time::operator-(const Time &rhs) const {
   normalizeSecNSecSigned(d.sec, d.nsec);
   return d;
 }
+
+Time Time::now()
+{
+  if (nh)
+    return nh->now();
+  return {};
+}
+
+bool Time::operator<(const Time& t) const {
+  return std::tie(sec, nsec) < std::tie(t.sec, t.nsec);
+}
+
+bool Time::operator<=(const Time& t) const {
+  return std::tie(sec, nsec) <= std::tie(t.sec, t.nsec);
+}
+
+bool Time::operator>=(const Time& t) const {
+  return !(*this < t);
+}
+
+bool Time::operator>(const Time& t) const {
+  return !(*this <= t);
+}
+
+bool Time::operator==(const Time& t) const {
+  return this->sec == t.sec && this->nsec == t.nsec;
+}
+
+bool Time::operator!=(const Time& t) const {
+  return !(*this == t);
+}
+
 }

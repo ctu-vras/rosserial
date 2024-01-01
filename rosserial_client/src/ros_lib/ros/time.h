@@ -42,6 +42,7 @@
 namespace ros
 {
 void normalizeSecNSec(uint32_t &sec, uint32_t &nsec);
+class NodeHandleBase_;
 
 class Time
 {
@@ -71,11 +72,20 @@ public:
   Time& fromNSec(int32_t t);
 
   Time& operator +=(const Duration &rhs);
+  Time operator +(const Duration &rhs);
   Time& operator -=(const Duration &rhs);
   Duration operator -(const Time &rhs) const;
 
+  static NodeHandleBase_* nh;
   static Time now();
   static void setNow(Time & new_now);
+
+  bool operator<(const Time& t) const;
+  bool operator>(const Time& t) const;
+  bool operator>=(const Time& t) const;
+  bool operator<=(const Time& t) const;
+  bool operator==(const Time& t) const;
+  bool operator!=(const Time& t) const;
 };
 
 }
