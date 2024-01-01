@@ -702,12 +702,16 @@ def rosserial_generate(rospack, path, mapping):
     print('\n')
 
 def rosserial_client_copy_files(rospack, path):
+    if not os.path.exists(os.path.join(path, "dynamic_reconfigure")):
+        os.makedirs(os.path.join(path, "dynamic_reconfigure"))
     if not os.path.exists(os.path.join(path, "ros")):
         os.makedirs(os.path.join(path, "ros"))
     if not os.path.exists(os.path.join(path, "tf")):
         os.makedirs(os.path.join(path, "tf"))
     files = ['duration.cpp',
              'time.cpp',
+             os.path.join('dynamic_reconfigure', 'config_tools.h'),
+             os.path.join('dynamic_reconfigure', 'server.h'),
              os.path.join('ros', 'duration.h'),
              os.path.join('ros', 'msg.h'),
              os.path.join('ros', 'node_handle.h'),
