@@ -82,6 +82,12 @@ void ActionServer<ActionSpec>::setup(ros::NodeHandleBase_& nh)
 
   this->nh_->subscribe(this->goal_sub_);
   this->nh_->subscribe(this->cancel_sub_);
+}
+
+template<class ActionSpec>
+void ActionServer<ActionSpec>::init(ros::NodeHandleBase_& nh)
+{
+  ActionServerBase<ActionSpec>::init(nh);
 
   // read the frequency with which to publish status from the parameter server
   // if not specified locally explicitly, use search param to find actionlib_status_frequency
@@ -93,12 +99,6 @@ void ActionServer<ActionSpec>::setup(ros::NodeHandleBase_& nh)
   double status_list_timeout {5.0};
   this->nh_->getParam((name + "/status_list_timeout").c_str(), status_list_timeout);
   this->status_list_timeout_.fromSec(status_list_timeout);
-}
-
-template<class ActionSpec>
-void ActionServer<ActionSpec>::init(ros::NodeHandleBase_& nh)
-{
-  ActionServerBase<ActionSpec>::init(nh);
 }
 
 template<class ActionSpec>
