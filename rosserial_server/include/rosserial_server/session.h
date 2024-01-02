@@ -626,7 +626,8 @@ private:
       XmlRpc::XmlRpcValue value;
       if (!nh_.getParam(req_param.request.name, value))
       {
-        throw std::runtime_error("Parameter was not retreived.");
+        ROS_INFO("Parameter '%s' not found.", req_param.request.name.c_str());
+        throw std::runtime_error("");
       }
       if (value.getType() == XmlRpc::XmlRpcValue::TypeArray)
       {
@@ -634,7 +635,8 @@ private:
         {
           if (value[i].getType() != value[0].getType())
           {
-            throw std::runtime_error("Heterogenous arrays are unsupported.");
+            ROS_ERROR("Parameter '%s' contains a heterogenous array!.", req_param.request.name.c_str());
+            throw std::runtime_error("");
           }
           add_single_value(value[i]);
         }
@@ -646,7 +648,8 @@ private:
     }
     catch (const std::exception& e)
     {
-      ROS_ERROR("Could not fetch parameter [%s]: %s", req_param.request.name.c_str(), e.what());
+      if (strlen(e.what()) > 0)
+        ROS_ERROR("Could not fetch parameter '%s': %s", req_param.request.name.c_str(), e.what());
       req_param.response.ints.clear();
       req_param.response.floats.clear();
       req_param.response.strings.clear();
