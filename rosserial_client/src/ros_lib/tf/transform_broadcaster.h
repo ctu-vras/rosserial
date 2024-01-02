@@ -35,7 +35,8 @@
 #ifndef ROS_TRANSFORM_BROADCASTER_H_
 #define ROS_TRANSFORM_BROADCASTER_H_
 
-#include "ros.h"
+#include "ros/node_handle.h"
+#include "ros/publisher.h"
 #include "tfMessage.h"
 
 namespace tf
@@ -46,7 +47,7 @@ class TransformBroadcaster
 public:
   TransformBroadcaster() : publisher_("/tf", &internal_msg) {}
 
-  void init(ros::NodeHandle &nh)
+  void init(ros::NodeHandleBase_ &nh)
   {
     nh.advertise(publisher_);
   }
