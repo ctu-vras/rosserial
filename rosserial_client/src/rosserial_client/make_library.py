@@ -702,6 +702,10 @@ def rosserial_generate(rospack, path, mapping):
     print('\n')
 
 def rosserial_client_copy_files(rospack, path):
+    if not os.path.exists(os.path.join(path, "actionlib")):
+        os.makedirs(os.path.join(path, "actionlib"))
+    if not os.path.exists(os.path.join(path, "actionlib", "server")):
+        os.makedirs(os.path.join(path, "actionlib", "server"))
     if not os.path.exists(os.path.join(path, "dynamic_reconfigure")):
         os.makedirs(os.path.join(path, "dynamic_reconfigure"))
     if not os.path.exists(os.path.join(path, "ros")):
@@ -710,6 +714,21 @@ def rosserial_client_copy_files(rospack, path):
         os.makedirs(os.path.join(path, "tf"))
     files = ['duration.cpp',
              'time.cpp',
+             os.path.join('actionlib', 'server', 'action_server.h'),
+             os.path.join('actionlib', 'server', 'action_server_base.h'),
+             os.path.join('actionlib', 'server', 'action_server_imp.h'),
+             os.path.join('actionlib', 'server', 'handle_tracker_deleter.h'),
+             os.path.join('actionlib', 'server', 'handle_tracker_deleter_imp.h'),
+             os.path.join('actionlib', 'server', 'server_goal_handle.h'),
+             os.path.join('actionlib', 'server', 'server_goal_handle_imp.h'),
+             os.path.join('actionlib', 'server', 'simple_action_server.h'),
+             os.path.join('actionlib', 'server', 'simple_action_server_imp.h'),
+             os.path.join('actionlib', 'server', 'status_tracker.h'),
+             os.path.join('actionlib', 'server', 'status_tracker_imp.h'),
+             os.path.join('actionlib', 'action_definition.h'),
+             os.path.join('actionlib', 'destruction_guard.h'),
+             os.path.join('actionlib', 'enclosure_deleter.h'),
+             os.path.join('actionlib', 'goal_id_generator.h'),
              os.path.join('dynamic_reconfigure', 'config_tools.h'),
              os.path.join('dynamic_reconfigure', 'server.h'),
              os.path.join('ros', 'duration.h'),
