@@ -50,8 +50,8 @@ namespace ${pkgname}
 
       virtual void clamp(${configname}Config &config, const ${configname}Config &max, const ${configname}Config &min) const = 0;
       virtual void calcLevel(uint32_t &level, const ${configname}Config &config1, const ${configname}Config &config2) const = 0;
-      virtual void fromServer(const ros::NodeHandle &nh, ${configname}Config &config, const std::string& ns) const = 0;
-      virtual void toServer(const ros::NodeHandle &nh, const ${configname}Config &config, const std::string& ns) const = 0;
+      virtual void fromServer(const ros::NodeHandleBase_ &nh, ${configname}Config &config, const std::string& ns) const = 0;
+      virtual void toServer(const ros::NodeHandleBase_ &nh, const ${configname}Config &config, const std::string& ns) const = 0;
       virtual bool fromMessage(const dynamic_reconfigure::Config &msg, ${configname}Config &config) const = 0;
       virtual void toMessage(dynamic_reconfigure::Config &msg, const ${configname}Config &config) const = 0;
       virtual void getValue(const ${configname}Config &config, std::any &val) const = 0;
@@ -89,13 +89,13 @@ namespace ${pkgname}
           comb_level |= level;
       }
 
-      virtual void fromServer(const ros::NodeHandle &nh, ${configname}Config &config, const std::string& ns) const override
+      virtual void fromServer(const ros::NodeHandleBase_ &nh, ${configname}Config &config, const std::string& ns) const override
       {
         const auto paramName = ns + "/" + name;
         nh.getParam(paramName.c_str(), config.*field);
       }
 
-      virtual void toServer(const ros::NodeHandle &nh, const ${configname}Config &config, const std::string& ns) const override
+      virtual void toServer(const ros::NodeHandleBase_ &nh, const ${configname}Config &config, const std::string& ns) const override
       {
         const auto paramName = ns + "/" + name;
         nh.setParam(paramName.c_str(), config.*field);
@@ -301,14 +301,14 @@ ${doline} ${linenum} "${filename}"
       __toMessage__(msg, __param_descriptions__, __group_descriptions__);
     }
 
-    void __toServer__(const ros::NodeHandle &nh, const std::string& ns) const
+    void __toServer__(const ros::NodeHandleBase_ &nh, const std::string& ns) const
     {
       const std::vector<AbstractParamDescriptionConstPtr> &__param_descriptions__ = __getParamDescriptions__();
       for (std::vector<AbstractParamDescriptionConstPtr>::const_iterator i = __param_descriptions__.begin(); i != __param_descriptions__.end(); ++i)
         (*i)->toServer(nh, *this, ns);
     }
 
-    void __fromServer__(const ros::NodeHandle &nh, const std::string& ns)
+    void __fromServer__(const ros::NodeHandleBase_ &nh, const std::string& ns)
     {
       static bool setup=false;
 

@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <iterator>  // For std::size
+#include <memory>
 #include <sstream>
 
 #include "std_msgs/String.h"
@@ -52,13 +53,270 @@
 namespace ros
 {
 
+class Publisher;
+class Subscriber_;
+template<typename MReq , typename MRes, typename ObjT>
+class ServiceServer;
+template<typename MReq , typename MRes>
+class ServiceClient;
+
 class NodeHandleBase_
 {
 public:
-  virtual int publish(int id, const Msg* msg) = 0;
+  virtual ~NodeHandleBase_() = default;
+  virtual int publish(int id, const Msg* msg) const = 0;
   virtual int spinOnce() = 0;
-  virtual bool connected() = 0;
+  virtual bool connected() const = 0;
   virtual Time now() const = 0;
+  virtual void initNode() = 0;
+  virtual void initNode(const char* portName) = 0;
+  virtual bool checkHardwareConnection() = 0;
+  virtual bool advertise(Publisher & p) = 0;
+  virtual bool subscribe(Subscriber_& s) = 0;
+
+  /* Register a new Service Server */
+  template<typename MReq, typename MRes, typename ObjT>
+  bool advertiseService(ServiceServer<MReq, MRes, ObjT>& srv)
+  {
+    bool v = advertise(srv.pub);
+    bool w = subscribe(srv);
+    return v && w;
+  }
+
+  /* Register a new Service Client */
+  template<typename MReq, typename MRes>
+  bool serviceClient(ServiceClient<MReq, MRes>& srv)
+  {
+    bool v = advertise(srv.pub);
+    bool w = subscribe(srv);
+    return v && w;
+  }
+
+  bool getParam(const char* name, int32_t* param, uint32_t length = 1, uint32_t timeout = 1000) const
+  {
+    if (requestParam(name, timeout))
+    {
+      if (length == req_param_resp.ints_length)
+      {
+        //copy it over
+        for (uint32_t i = 0; i < length; i++)
+          param[i] = req_param_resp.ints[i];
+        return true;
+      }
+      else
+      {
+        if (req_param_resp.ints_length == 0)
+          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
+        else
+          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
+      }
+    }
+    return false;
+  }
+
+  bool getParam(const char* name, int& param, uint32_t timeout = 1000) const
+  {
+    int32_t p;
+    const auto res = this->getParam(name, &p, 1, timeout);
+    param = p;
+    return res;
+  }
+
+  bool getParam(const char* name, int* param, uint32_t timeout = 1000) const
+  {
+    return this->getParam(name, *param, timeout);
+  }
+
+  bool getParam(const char* name, float* param, uint32_t length = 1, uint32_t timeout = 1000) const
+  {
+    if (requestParam(name, timeout))
+    {
+      if (length == req_param_resp.floats_length)
+      {
+        //copy it over
+        for (uint32_t i = 0; i < length; i++)
+          param[i] = req_param_resp.floats[i];
+        return true;
+      }
+      else
+      {
+        if (req_param_resp.floats_length == 0)
+          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
+        else
+          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
+      }
+    }
+    return false;
+  }
+
+  bool getParam(const char* name, double* param, uint32_t length = 1, uint32_t timeout = 1000) const
+  {
+    float p;
+    const auto res = getParam(name, &p, length, timeout);
+    if (res)
+      *param = p;
+    return res;
+  }
+
+  bool getParam(const char* name, double& param, uint32_t timeout = 1000) const
+  {
+    return this->getParam(name, &param, 1, timeout);
+  }
+
+  bool getParam(const char* name, std::string& param, uint32_t timeout = 1000) const
+  {
+    if (this->requestParam(name, timeout))
+    {
+      if (1 == req_param_resp.strings_length)
+      {
+        param = req_param_resp.strings[0];
+        return true;
+      }
+      else
+      {
+        if (req_param_resp.strings_length == 0)
+          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
+        else
+          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
+      }
+    }
+    return false;
+  }
+
+  bool getParam(const char* name, char** param, uint32_t length = 1, uint32_t timeout = 1000) const
+  {
+    if (requestParam(name, timeout))
+    {
+      if (length == req_param_resp.strings_length)
+      {
+        //copy it over
+        for (uint32_t i = 0; i < length; i++)
+          strcpy(param[i], req_param_resp.strings[i]);
+        return true;
+      }
+      else
+      {
+        if (req_param_resp.strings_length == 0)
+          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
+        else
+          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
+      }
+    }
+    return false;
+  }
+
+  bool getParam(const char* name, bool& param, uint32_t timeout = 1000) const
+  {
+    return this->getParam(name, &param, 1, timeout);
+  }
+  bool getParam(const char* name, bool* param, uint32_t length = 1, uint32_t timeout = 1000) const
+  {
+    if (requestParam(name, timeout))
+    {
+      if (length == req_param_resp.ints_length)
+      {
+        //copy it over
+        for (uint32_t i = 0; i < length; i++)
+          param[i] = req_param_resp.ints[i];
+        return true;
+      }
+      else
+      {
+        if (req_param_resp.ints_length == 0)
+          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
+        else
+          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
+      }
+    }
+    return false;
+  }
+
+  void setParam(const char* name, const bool& param) const
+  {
+    setParamXmlRpcValue(name, param ? "<boolean>1</boolean>" : "<boolean>0</boolean>");
+  }
+
+  void setParam(const char* name, const int& param) const
+  {
+    std::stringstream ss;
+    ss << "<i4>" << param << "</i4>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void setParam(const char* name, const int32_t& param) const
+  {
+    std::stringstream ss;
+    ss << "<i4>" << param << "</i4>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void setParam(const char* name, const float& param) const
+  {
+    std::stringstream ss;
+    ss << "<double>" << param << "</double>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void setParam(const char* name, const double& param) const
+  {
+    std::stringstream ss;
+    ss << "<double>" << param << "</double>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void setParam(const char* name, const char* param) const
+  {
+    std::stringstream ss;
+    ss << "<string>" << param << "</string>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void setParam(const char* name, const std::string& param) const
+  {
+    std::stringstream ss;
+    ss << "<string>" << param << "</string>";
+    setParamXmlRpcValue(name, ss.str());
+  }
+
+  void log(rosserial_msgs::Log::_level_type level, const char * fmt, ...) const
+  {
+    static char msg[512];
+    va_list argptr;
+    va_start(argptr, fmt);
+    vsnprintf(msg, std::size(msg), fmt, argptr);
+    va_end(argptr);
+
+    logImpl(level, msg);
+  }
+
+  void logdebug(const char* msg) const
+  {
+    logImpl(rosserial_msgs::Log::ROSDEBUG, msg);
+  }
+  void loginfo(const char * msg) const
+  {
+    logImpl(rosserial_msgs::Log::INFO, msg);
+  }
+  void logwarn(const char *msg) const
+  {
+    logImpl(rosserial_msgs::Log::WARN, msg);
+  }
+  void logerror(const char*msg) const
+  {
+    logImpl(rosserial_msgs::Log::ERROR, msg);
+  }
+  void logfatal(const char*msg) const
+  {
+    logImpl(rosserial_msgs::Log::FATAL, msg);
+  }
+
+protected:
+  mutable bool param_received{false};
+  rosserial_msgs::RequestParamResponse req_param_resp{};
+
+  virtual bool requestParam(const char * name, uint32_t time_out) const = 0;
+  virtual void setParamXmlRpcValue(const char* name, const std::string& valueXmlRpc) const = 0;
+  virtual void logImpl(rosserial_msgs::Log::_level_type level, const char * msg) const = 0;
 };
 }
 
@@ -101,6 +359,8 @@ const uint8_t MODE_MSG_CHECKSUM   = 8;    // checksum for msg and topic id
 
 const uint8_t SERIAL_MSG_TIMEOUT  = 20;   // 20 milliseconds to recieve all of message data
 
+static constexpr rosserial_msgs::Log::_level_type MIN_LOCAL_LOGGING_LEVEL {rosserial_msgs::Log::INFO};
+
 using rosserial_msgs::TopicInfo;
 
 /* Node Handle */
@@ -112,7 +372,7 @@ template<class Hardware,
 class NodeHandle_ : public NodeHandleBase_
 {
 protected:
-  Hardware hardware_{};
+  std::unique_ptr<Hardware> hardware_{std::make_unique<Hardware>()};
 
   /* time used for syncing */
   uint32_t rt_time{0};
@@ -123,8 +383,8 @@ protected:
   /* Spinonce maximum work timeout */
   uint32_t spin_timeout_{0};
 
-  uint8_t message_in[INPUT_SIZE] = {0};
-  uint8_t message_out[OUTPUT_SIZE] = {0};
+  mutable uint8_t message_in[INPUT_SIZE] = {0};
+  mutable uint8_t message_out[OUTPUT_SIZE] = {0};
 
   Publisher* publishers[MAX_PUBLISHERS] = {nullptr};
   Subscriber_* subscribers[MAX_SUBSCRIBERS] {nullptr};
@@ -135,13 +395,13 @@ protected:
 public:
   Hardware* getHardware()
   {
-    return &hardware_;
+    return hardware_.get();
   }
 
   /* Start serial, initialize buffers */
-  void initNode()
+  void initNode() override
   {
-    hardware_.init();
+    hardware_->init();
     Time::nh = this;
     mode_ = 0;
     bytes_ = 0;
@@ -150,9 +410,9 @@ public:
   };
 
   /* Start a named port, which may be network server IP, initialize buffers */
-  void initNode(const char* portName)
+  void initNode(const char* portName) override
   {
-    hardware_.init(portName);
+    hardware_->init(portName);
     Time::nh = this;
     mode_ = 0;
     bytes_ = 0;
@@ -181,7 +441,7 @@ protected:
   int index_{0};
   int checksum_{0};
 
-  bool configured_{false};
+  mutable bool configured_{false};
 
   /* used for syncing the time */
   uint32_t last_sync_time{0};
@@ -196,7 +456,7 @@ public:
 
   int spinOnce() override
   {
-    if (!hardware_.checkConnection())
+    if (!hardware_->checkConnection())
     {
       if (configured_)
         printf("ROS connection lost, reconnecting\r\n");
@@ -207,12 +467,12 @@ public:
     // Hardware is assumed to be connected from now on
 
     /* restart if timed out */
-    uint32_t c_time = hardware_.time();
+    uint32_t c_time = hardware_->time();
     if (configured_ && c_time - last_sync_receive_time > SYNC_SECONDS * 2200)
     {
       printf("ROS connection lost, reconnecting\r\n");
       configured_ = false;
-      hardware_.disconnect();
+      hardware_->disconnect();
     }
 
     /* reset if message has timed out */
@@ -237,13 +497,13 @@ public:
         // The next spinOnce can continue where it left off, or optionally
         // based on the application in use, the hardware buffer could be flushed
         // and start fresh.
-        if ((hardware_.time() - c_time) > spin_timeout_)
+        if ((hardware_->time() - c_time) > spin_timeout_)
         {
           // Exit the spin, processing timeout exceeded.
           return SPIN_TIMEOUT;
         }
       }
-      int data = hardware_.read();
+      int data = hardware_->read();
       if (data < 0)
         break;
       checksum_ += data;
@@ -261,7 +521,7 @@ public:
           mode_++;
           last_msg_timeout_time = c_time + SERIAL_MSG_TIMEOUT;
         }
-        else if (hardware_.time() - c_time > (SYNC_SECONDS * 1000))
+        else if (hardware_->time() - c_time > (SYNC_SECONDS * 1000))
         {
           /* We have been stuck in spinOnce too long, return error */
           configured_ = false;
@@ -340,7 +600,7 @@ public:
           {
             configured_ = false;
             tx_stop_requested = true;
-            hardware_.disconnect();
+            hardware_->disconnect();
           }
           else
           {
@@ -363,9 +623,9 @@ public:
 
 
   /* Are we connected to the PC? */
-  virtual bool connected() override
+  bool connected() const override
   {
-    if (!hardware_.connected())
+    if (!hardware_->connected())
     {
       if (configured_)
         printf("ROS connection lost, reconnecting\r\n");
@@ -374,9 +634,9 @@ public:
     return configured_;
   };
 
-  bool checkHardwareConnection()
+  bool checkHardwareConnection() override
   {
-    if (!hardware_.checkConnection())
+    if (!hardware_->checkConnection())
     {
       if (configured_)
         printf("ROS connection lost, reconnecting\r\n");
@@ -394,20 +654,20 @@ public:
   {
     std_msgs::Time t;
     publish(TopicInfo::ID_TIME, &t);
-    rt_time = hardware_.time();
+    rt_time = hardware_->time();
   }
 
   void syncTime(uint8_t * data)
   {
     std_msgs::Time t;
-    uint32_t offset = hardware_.time() - rt_time;
+    uint32_t offset = hardware_->time() - rt_time;
 
     t.deserialize(data);
     t.data.sec += offset / 1000;
     t.data.nsec += (offset % 1000) * 1000000UL;
 
     this->setNow(t.data);
-    last_sync_receive_time = hardware_.time();
+    last_sync_receive_time = hardware_->time();
   }
 
   Time convertHWTime(const uint32_t hwTime) const
@@ -421,12 +681,12 @@ public:
 
   Time now() const override
   {
-    return convertHWTime(hardware_.time());
+    return convertHWTime(hardware_->time());
   }
 
   void setNow(const Time & new_now)
   {
-    uint32_t ms = hardware_.time();
+    uint32_t ms = hardware_->time();
     sec_offset = new_now.sec - ms / 1000 - 1;
     nsec_offset = new_now.nsec - (ms % 1000) * 1000000UL + 1000000000UL;
     normalizeSecNSec(sec_offset, nsec_offset);
@@ -437,7 +697,7 @@ public:
    */
 
   /* Register a new publisher */
-  bool advertise(Publisher & p)
+  bool advertise(Publisher & p) override
   {
     for (int i = 0; i < MAX_PUBLISHERS; i++)
     {
@@ -454,7 +714,7 @@ public:
   }
 
   /* Register a new subscriber */
-  bool subscribe(Subscriber_& s)
+  bool subscribe(Subscriber_& s) override
   {
     for (int i = 0; i < MAX_SUBSCRIBERS; i++)
     {
@@ -467,24 +727,6 @@ public:
     }
     printf("ERROR: Ran out of subscribers!");
     return false;
-  }
-
-  /* Register a new Service Server */
-  template<typename MReq, typename MRes, typename ObjT>
-  bool advertiseService(ServiceServer<MReq, MRes, ObjT>& srv)
-  {
-    bool v = advertise(srv.pub);
-    bool w = subscribe(srv);
-    return v && w;
-  }
-
-  /* Register a new Service Client */
-  template<typename MReq, typename MRes>
-  bool serviceClient(ServiceClient<MReq, MRes>& srv)
-  {
-    bool v = advertise(srv.pub);
-    bool w = subscribe(srv);
-    return v && w;
   }
 
   void negotiateTopics()
@@ -526,7 +768,7 @@ public:
     printf("ROS connected\r\n");
   }
 
-  virtual int publish(int id, const Msg * msg) override
+  int publish(int id, const Msg * msg) const override
   {
     if (id >= 100 && !connected())
       return 0;
@@ -556,7 +798,7 @@ public:
     l += 7;
     message_out[l++] = 255 - (chk % 256);
 
-    if (!hardware_.write(message_out, l))
+    if (!hardware_->write(message_out, l))
     {
       printf("ERROR: Failed publishing message of length %u on topic %u.\r\n", l, id);
       return -l;
@@ -569,74 +811,36 @@ public:
    */
 
 protected:
-
-  static constexpr rosserial_msgs::Log::_level_type MIN_LOCAL_LOGGING_LEVEL {rosserial_msgs::Log::INFO};
   static constexpr const char* LOG_LEVELS[rosserial_msgs::Log::FATAL + 1] = {
     "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
   };
 
-  void _log(rosserial_msgs::Log::_level_type level, const char * msg)
+  void logImpl(rosserial_msgs::Log::_level_type level, const char * msg) const override
   {
     rosserial_msgs::Log l;
     l.level = level;
     l.msg = msg;
     if (level >= MIN_LOCAL_LOGGING_LEVEL)
-      printf("[%5s] [%lu]: %s\r\n", LOG_LEVELS[level], hardware_.time(), msg);
+      printf("[%5s] [%lu]: %s\r\n", LOG_LEVELS[level], hardware_->time(), msg);
     publish(rosserial_msgs::TopicInfo::ID_LOG, &l);
   }
-
-public:
-  void log(rosserial_msgs::Log::_level_type level, const char * fmt, ...)
-  {
-    static char msg[512];
-    va_list argptr;
-    va_start(argptr, fmt);
-    vsnprintf(msg, std::size(msg), fmt, argptr);
-    va_end(argptr);
-
-    _log(level, msg);
-  }
-
-  void logdebug(const char* msg)
-  {
-    _log(rosserial_msgs::Log::ROSDEBUG, msg);
-  }
-  void loginfo(const char * msg)
-  {
-    _log(rosserial_msgs::Log::INFO, msg);
-  }
-  void logwarn(const char *msg)
-  {
-    _log(rosserial_msgs::Log::WARN, msg);
-  }
-  void logerror(const char*msg)
-  {
-    _log(rosserial_msgs::Log::ERROR, msg);
-  }
-  void logfatal(const char*msg)
-  {
-    _log(rosserial_msgs::Log::FATAL, msg);
-  }
+  
 
   /********************************************************************
    * Parameters
    */
 
-protected:
-  bool param_received{false};
-  rosserial_msgs::RequestParamResponse req_param_resp{};
-
-  bool requestParam(const char * name, uint32_t time_out =  1000)
+  bool requestParam(const char * name, uint32_t time_out) const override
   {
     param_received = false;
     rosserial_msgs::RequestParamRequest req;
     req.name  = (char*)name;
     publish(TopicInfo::ID_PARAMETER_REQUEST, &req);
-    uint32_t end_time = hardware_.time() + time_out;
+    uint32_t end_time = hardware_->time() + time_out;
     while (!param_received)
     {
-      spinOnce();
-      if (hardware_.time() > end_time)
+      const_cast<NodeHandle_*>(this)->spinOnce();
+      if (hardware_->time() > end_time)
       {
         logwarn("Failed to get param: timeout expired");
         return false;
@@ -645,7 +849,7 @@ protected:
     return true;
   }
 
-  void setParamXmlRpcValue(const char* name, const std::string& valueXmlRpc)
+  void setParamXmlRpcValue(const char* name, const std::string& valueXmlRpc) const override
   {
     std::stringstream ss;
     ss << "<value><struct>";
@@ -659,186 +863,7 @@ protected:
     req.data  = xmlRpcReq.c_str();
     publish(66, &req);
   }
-
-public:
-  bool getParam(const char* name, int32_t* param, uint32_t length = 1, uint32_t timeout = 1000)
-  {
-    if (requestParam(name, timeout))
-    {
-      if (length == req_param_resp.ints_length)
-      {
-        //copy it over
-        for (uint32_t i = 0; i < length; i++)
-          param[i] = req_param_resp.ints[i];
-        return true;
-      }
-      else
-      {
-        if (req_param_resp.ints_length == 0)
-          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
-        else
-          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
-      }
-    }
-    return false;
-  }
-
-  bool getParam(const char* name, int& param, uint32_t timeout = 1000) const
-  {
-    int32_t p;
-    const auto res = const_cast<NodeHandle_*>(this)->getParam(name, &p, 1, timeout);
-    param = p;
-    return res;
-  }
-
-  bool getParam(const char* name, int* param, uint32_t timeout = 1000) const
-  {
-    return const_cast<NodeHandle_*>(this)->getParam(name, *param, 1, timeout);
-  }
-
-  bool getParam(const char* name, float* param, uint32_t length = 1, uint32_t timeout = 1000)
-  {
-    if (requestParam(name, timeout))
-    {
-      if (length == req_param_resp.floats_length)
-      {
-        //copy it over
-        for (uint32_t i = 0; i < length; i++)
-          param[i] = req_param_resp.floats[i];
-        return true;
-      }
-      else
-      {
-        if (req_param_resp.floats_length == 0)
-          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
-        else
-          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
-      }
-    }
-    return false;
-  }
-
-  bool getParam(const char* name, double* param, uint32_t length = 1, uint32_t timeout = 1000)
-  {
-    float p;
-    const auto res = getParam(name, &p, length, timeout);
-    if (res)
-      *param = p;
-    return res;
-  }
-
-  bool getParam(const char* name, double& param, uint32_t timeout = 1000) const
-  {
-    return const_cast<NodeHandle_*>(this)->getParam(name, &param, 1, timeout);
-  }
-
-  bool getParam(const char* name, std::string& param, uint32_t timeout = 1000) const
-  {
-    if (const_cast<NodeHandle_*>(this)->requestParam(name, timeout))
-    {
-      if (1 == req_param_resp.strings_length)
-      {
-        param = req_param_resp.strings[0];
-        return true;
-      }
-      else
-      {
-        if (req_param_resp.strings_length == 0)
-          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
-        else
-          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
-      }
-    }
-    return false;
-  }
-
-  bool getParam(const char* name, char** param, uint32_t length = 1, uint32_t timeout = 1000)
-  {
-    if (requestParam(name, timeout))
-    {
-      if (length == req_param_resp.strings_length)
-      {
-        //copy it over
-        for (uint32_t i = 0; i < length; i++)
-          strcpy(param[i], req_param_resp.strings[i]);
-        return true;
-      }
-      else
-      {
-        if (req_param_resp.strings_length == 0)
-          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
-        else
-          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
-      }
-    }
-    return false;
-  }
-
-  bool getParam(const char* name, bool& param, uint32_t timeout = 1000) const
-  {
-    return const_cast<NodeHandle_*>(this)->getParam(name, &param, 1, timeout);
-  }
-  bool getParam(const char* name, bool* param, uint32_t length = 1, uint32_t timeout = 1000)
-  {
-    if (requestParam(name, timeout))
-    {
-      if (length == req_param_resp.ints_length)
-      {
-        //copy it over
-        for (uint32_t i = 0; i < length; i++)
-          param[i] = req_param_resp.ints[i];
-        return true;
-      }
-      else
-      {
-        if (req_param_resp.ints_length == 0)
-          log(rosserial_msgs::Log::INFO, "Parameter '%s' not found.", name);
-        else
-          log(rosserial_msgs::Log::WARN, "Failed to get param '%s': length mismatch", name);
-      }
-    }
-    return false;
-  }
-
-  void setParam(const char* name, const bool& param)
-  {
-    setParamXmlRpcValue(name, param ? "<boolean>1</boolean>" : "<boolean>0</boolean>");
-  }
-
-  void setParam(const char* name, const int32_t& param)
-  {
-    std::stringstream ss;
-    ss << "<i4>" << param << "</i4>";
-    setParamXmlRpcValue(name, ss.str());
-  }
-
-  void setParam(const char* name, const float& param)
-  {
-    std::stringstream ss;
-    ss << "<double>" << param << "</double>";
-    setParamXmlRpcValue(name, ss.str());
-  }
-
-  void setParam(const char* name, const double& param) const
-  {
-    std::stringstream ss;
-    ss << "<double>" << param << "</double>";
-    const_cast<NodeHandle_*>(this)->setParamXmlRpcValue(name, ss.str());
-  }
-
-  void setParam(const char* name, const char* param)
-  {
-    std::stringstream ss;
-    ss << "<string>" << param << "</string>";
-    setParamXmlRpcValue(name, ss.str());
-  }
-
-  void setParam(const char* name, const std::string& param)
-  {
-    std::stringstream ss;
-    ss << "<string>" << param << "</string>";
-    setParamXmlRpcValue(name, ss.str());
-  }
+  
 };
 
 }

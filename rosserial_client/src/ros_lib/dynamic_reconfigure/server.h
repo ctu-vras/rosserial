@@ -47,9 +47,11 @@
 
 #include <functional>
 
-#include <ros.h>
 #include <dynamic_reconfigure/ConfigDescription.h>
 #include <dynamic_reconfigure/Reconfigure.h>
+#include <ros/node_handle.h>
+#include <ros/publisher.h>
+#include <ros/service_server.h>
 
 /**
  * @todo Add diagnostics.
@@ -73,7 +75,7 @@ public:
   {
   }
 
-  void setup(ros::NodeHandle& nh)
+  void setup(ros::NodeHandleBase_& nh)
   {
     node_handle_ = &nh;
     nh.advertiseService(set_service_);
@@ -81,7 +83,7 @@ public:
     nh.advertise(descr_pub_);
   }
 
-  void init(ros::NodeHandle& nh)
+  void init(ros::NodeHandleBase_& nh)
   {
     //Grab copys of the data from the config files.  These are declared in the generated config file.
     min_ = ConfigType::__getMin__();
@@ -154,7 +156,7 @@ public:
 
 private:
   std::string ns_;
-  ros::NodeHandle* node_handle_;
+  ros::NodeHandleBase_* node_handle_;
   ConfigType& config_;
   std::string set_service_topic_;
   std::string update_topic_;
