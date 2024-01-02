@@ -77,7 +77,7 @@ public:
   {
     if (latch_ && latched_msg_ != nullptr)
     {
-      printf("Resending latched message on %i: %s\r\n", id_, topic_);
+      nh_->printf("Resending latched message on %i: %s\r\n", id_, topic_);
       return nh_->publish(id_, latched_msg_);
     }
     return 0;

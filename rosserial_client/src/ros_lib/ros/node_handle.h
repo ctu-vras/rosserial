@@ -53,6 +53,63 @@
 namespace ros
 {
 
+class HardwareTemplate {
+public:
+  void init() {
+    // Initialize the hardware connecting to a default port
+  }
+
+  void init(const char* port) {
+    // Initialize the hardware connecting to the given port
+  }
+
+  void print_stats() {
+    // Print some useful statistics about the hardware
+  }
+
+  void reset_rbuf(uint8_t* data, const uint16_t length) {
+    // Save the incoming data from hardware into a buffer from which read() can read them a little later.
+  }
+
+  int read() {
+    // Read data from the buffer if there are some.
+    return -1;
+  }
+
+  void flush() {
+    // Flush data written to the hardware (if the hardware needs flushing).
+  }
+
+  bool write(const uint8_t* data, const size_t length) {
+    // Write the given data to the hardware. They can be transmitted right away or may be delayed. Flush might be needed.
+    return false;
+  }
+
+  uint32_t time() const {
+    // Get the current hardware time in ms.
+    return 0;
+  }
+
+  bool connected() const {
+    // Tell whether the hardware is connected to the other endpoint.
+    return false;
+  }
+
+  bool checkConnection() const {
+    // If the hardware is not connected, tries to connect and returns whether it is now connected.
+    return false;
+  }
+
+  void disconnect() {
+    // Disconnect the hardware and clear buffers.
+  }
+
+  void printf(const char* fmt, va_list args)
+  {
+    // Print the given string like vprintf() to log output.
+  }
+};
+
 class Publisher;
 class Subscriber_;
 template<typename MReq , typename MRes, typename ObjT>
@@ -73,6 +130,7 @@ public:
   virtual bool checkHardwareConnection() = 0;
   virtual bool advertise(Publisher & p) = 0;
   virtual bool subscribe(Subscriber_& s) = 0;
+  virtual void printf(const char* fmt, ...) const = 0;
 
   /* Register a new Service Server */
   template<typename MReq, typename MRes, typename ObjT>
@@ -364,7 +422,7 @@ static constexpr rosserial_msgs::Log::_level_type MIN_LOCAL_LOGGING_LEVEL {rosse
 using rosserial_msgs::TopicInfo;
 
 /* Node Handle */
-template<class Hardware,
+template<class Hardware = HardwareTemplate,
          int MAX_SUBSCRIBERS = 25,
          int MAX_PUBLISHERS = 25,
          int INPUT_SIZE = 512,
@@ -815,6 +873,14 @@ protected:
     "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
   };
 
+  void printf(const char* fmt, ...) const override
+  {
+    va_list argptr;
+    va_start(argptr, fmt);
+    hardware_->printf(fmt, argptr);
+    va_end(argptr);
+  }
+
   void logImpl(rosserial_msgs::Log::_level_type level, const char * msg) const override
   {
     rosserial_msgs::Log l;
@@ -842,7 +908,7 @@ protected:
       const_cast<NodeHandle_*>(this)->spinOnce();
       if (hardware_->time() > end_time)
       {
-        logwarn("Failed to get param: timeout expired");
+        log(rosserial_msgs::Log::WARN, "Failed to get param '%s': timeout expired", name);
         return false;
       }
     }
